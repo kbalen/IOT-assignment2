@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Temperature and Humidity Monitor</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <style>
+        .charts-container {
+            width: 900px;
+            margin: 20px auto;
+        }
+
+        .chart-wrapper {
+            margin-bottom: 30px;
+        }
+
+        #status {
+            text-align: center;
+            padding: 10px;
+            margin: 10px;
+            font-family: Arial, sans-serif;
+        }
+
+        .connected {
+            color: green;
+        }
+
+        .disconnected {
+            color: red;
+        }
+
+        .current-values {
+            display: flex;
+            justify-content: center;
+            gap: 40px;
+            margin: 20px;
+            font-family: Arial, sans-serif;
+        }
+
+        .sensor-value {
+            padding: 15px;
+            border-radius: 8px;
+            background-color: #f5f5f5;
+            text-align: center;
+        }
+
+        .last-updated {
+            font-size: 0.8em;
+            color: #666;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="status" class="disconnected">WebSocket Status: Disconnected</div>
+    <div class="current-values">
+        <div class="sensor-value">
+            <h3>Temperature</h3>
+            <span id="tempValue">--</span>°C
+            <div id="tempTimestamp" class="last-updated">Last updated: --</div>
+        </div>
+        <div class="sensor-value">
+            <h3>Humidity</h3>
+            <span id="humValue">--</span>%
+            <div id="humTimestamp" class="last-updated">Last updated: --</div>
+        </div>
+    </div>
+    <div class="charts-container">
+        <div class="chart-wrapper">
+            <canvas id="temperatureChart"></canvas>
+        </div>
+        <div class="chart-wrapper">
+            <canvas id="humidityChart"></canvas>
+        </div>
+    </div>
+
+    <script>
+        // Maximum number of data points to show
+        const MAX_DATA_POINTS = 50;
+
+        // Helper function to create a chart
+        function createChart(canvasId, label, color) {
+            const ctx = document.getElementById(canvasId).getContext('2d');
+            return new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: label,
+                        data: [],
+                        borderColor: color,
+                        tension: 0.1,
+                        fill: false
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            ticks: {
+                                callback: function (value) {
+                                    return value + (label.includes('Temperature') ? '°C' : '%');
+                                }
+                            }
+                        }
+                    },
+                    animation: {
+                        duration: 0
+                    },
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: label + ' Over Time'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function (context) {
+                                    return `${context.dataset.label}: ${context.parsed.y}${label.includes('Temperature') ? '°C' : '%'}`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Initialize charts
+        const tempChart = createChart('temperatureChart', 'Temperature', 'rgb(255, 99, 132)');
+        const humChart = createChart('humidityChart', 'Humidity', 'rgb(54, 162, 235)');
+
+        // Update chart with new data
+        function updateChart(chart, value, timestamp) {
+            const timeStr = new Date(timestamp).toLocaleTimeString();
+            chart.data.labels.push(timeStr);
+            chart.data.datasets[0].data.push(value);
+
+            if (chart.data.labels.length > MAX_DATA_POINTS) {
+                chart.data.labels.shift();
+                chart.data.datasets[0].data.shift();
+            }
+
+            chart.update('none');
+        }
+
+        // Format timestamp
+        function formatTimestamp(timestamp) {
+            return new Date(timestamp).toLocaleString();
+        }
+
+        // Initialize WebSocket connection
+        function connectWebSocket() {
+            const ws = new WebSocket(`ws://${window.location.hostname}:${window.location.port}`);
+            const statusDiv = document.getElementById('status');
+            const tempValueDisplay = document.getElementById('tempValue');
+            const humValueDisplay = document.getElementById('humValue');
+            const tempTimestamp = document.getElementById('tempTimestamp');
+            const humTimestamp = document.getElementById('humTimestamp');
+
+            ws.onopen = () => {
+                statusDiv.textContent = 'WebSocket Status: Connected';
+                statusDiv.className = 'connected';
+            };
+
+            ws.onclose = () => {
+                statusDiv.textContent = 'WebSocket Status: Disconnected - Reconnecting...';
+                statusDiv.className = 'disconnected';
+                setTimeout(connectWebSocket, 5000);
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket Error:', error);
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+
+                    // Update appropriate chart and display based on sensor type
+                    if (data.topic === 'iot/temperature') {
+                        updateChart(tempChart, data.value, data.timestamp);
+                        tempValueDisplay.textContent = data.value.toFixed(1);
+                        tempTimestamp.textContent = 'Last updated: ' + formatTimestamp(data.timestamp);
+                    } else if (data.topic === 'iot/humidity') {
+                        updateChart(humChart, data.value, data.timestamp);
+                        humValueDisplay.textContent = data.value.toFixed(1);
+                        humTimestamp.textContent = 'Last updated: ' + formatTimestamp(data.timestamp);
+                    }
+                } catch (error) {
+                    console.error('Error processing message:', error);
+                }
+            };
+        }
+
+        // Start the WebSocket connection
+        connectWebSocket();
+    </script>
+</body>
+
+</html>

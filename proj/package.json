@@ -1,0 +1,17 @@
+{
+  "name": "iot-mqtt",
+  "module": "index.ts",
+  "type": "module",
+  "devDependencies": {
+    "bun-types": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "express": "^4.21.1",
+    "mongodb": "^6.10.0",
+    "mqtt": "^5.3.0",
+    "ws": "^8.18.0"
+  }
+}
